@@ -106,7 +106,7 @@
 <div id="stage"></div>
 <div id="haze"></div><div id="grain"></div><div id="vignette"></div>
 
-<div id="note">J.A.R.V.I.S. — CORE INTERFACE</div>
+<div id="note">J.A.R.V.I.S. — CORE INTERFACE · BUILD 4</div>
 <div id="link">LINK ○ BROWSER</div>
 <div id="caption"><b id="capWho">JARVIS</b><span id="capText"></span></div>
 
@@ -414,10 +414,9 @@ function syllables(t){
 }
 
 function rawLevel(t){
-  const now=performance.now();
-  if(now<demoUntil || synthSpeaking) return syllables(t);
-  if(now<extUntil) return extLevel;
-  if(!analyser) return 0;
+  // 球体が動くのはジャービスが喋るときだけ。こちらの声には反応しない
+  if(demoUntil>performance.now() || synthSpeaking) return syllables(t);
+  if(state!=='speaking' || !analyser) return 0;
   analyser.getByteTimeDomainData(buf);
   let sum=0;
   for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128; sum+=v*v;}
@@ -633,14 +632,7 @@ if(SR){
 }
 
 async function startListening(){
-  ensureAudio();
-  if(!micStream){
-    try{
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:true, noiseSuppression:true}});
-      audioCtx.createMediaStreamSource(micStream).connect(analyser);
-    }catch(e){ caption('SYSTEM','マイクを使用できません'); return; }
-  }
+  ensureAudio();                     // 再生の解析用。マイクは認識APIに任せる
   if(!rec){ caption('SYSTEM','このブラウザは音声認識に未対応です（Chrome推奨）'); return; }
   try{ rec.start(); }catch(e){}
 }
@@ -680,7 +672,7 @@ window.JARVIS = {
       const m = JSON.parse(ev.data);
       if(m.state) setState(m.state);
       if(m.text)  caption(m.who||'JARVIS', m.text);
-      if(typeof m.level==='number'){ extLevel=m.level; extUntil=performance.now()+250; }
+      // 録音中の音量は使わない
     }catch(e){}
   };
 })();
@@ -793,7 +785,7 @@ const clock=new THREE.Clock();
   uniforms.uBreath.value=(REDUCED?.004:.012)*Math.sin(t*.55);
   uniforms.uCool.value += ((state==='listening'?1:0)-uniforms.uCool.value)*.05;
 
-  const wanted = state==='listening' ? .962 : 1+level*.078;
+  const wanted = 1 + level*.078;
   uniforms.uScale.value += (wanted-uniforms.uScale.value)*.12;
 
   group.rotation.y += dt*((REDUCED?.02:.072)+level*.15);

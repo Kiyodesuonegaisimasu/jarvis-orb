@@ -2,95 +2,138 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>JARVIS ORB</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>J.A.R.V.I.S.</title>
+<meta name="description" content="声で話しかけると膨らんで応える球体インターフェース">
+<meta name="theme-color" content="#04060a">
+<meta property="og:title" content="J.A.R.V.I.S. — Core Interface">
+<meta property="og:description" content="声で話しかけると膨らんで応える球体インターフェース">
 <style>
-  :root{
-    --amber:#ffb020;
-    --hot:#fff0c4;
-    --deep:#ff6a00;
-    --ink:#05070c;
-    --haze:#0c1220;
-  }
+  :root{ --amber:#ffb020; --hot:#fff2cc; --ink:#04060a; }
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{height:100%;background:var(--ink);overflow:hidden}
   body{
     font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
-    color:rgba(255,206,130,.75);
+    color:rgba(255,206,130,.72);-webkit-tap-highlight-color:transparent;
   }
+  body.hide-ui #hud,body.hide-ui #note,body.hide-ui #link{opacity:0;pointer-events:none}
+  body.hide-ui{cursor:none}
   #stage{position:fixed;inset:0}
   canvas{display:block}
 
-  /* 背景の空気感：球体の光が室内に散っている感じ */
-  #haze{
-    position:fixed;inset:0;pointer-events:none;
+  #haze{position:fixed;inset:0;pointer-events:none;mix-blend-mode:screen;
     background:
-      radial-gradient(60% 50% at 50% 48%, rgba(255,140,20,.10), transparent 70%),
-      radial-gradient(120% 90% at 50% 120%, rgba(20,60,120,.22), transparent 60%);
-    mix-blend-mode:screen;
-  }
-  #vignette{
-    position:fixed;inset:0;pointer-events:none;
-    background:radial-gradient(75% 65% at 50% 50%, transparent 40%, rgba(0,0,0,.72) 100%);
-  }
+      radial-gradient(58% 48% at 50% 47%, rgba(255,132,16,.13), transparent 72%),
+      radial-gradient(120% 90% at 50% 125%, rgba(18,56,116,.20), transparent 62%);}
+  #grain{position:fixed;inset:-50%;pointer-events:none;opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation:drift 1.1s steps(3) infinite}
+  @keyframes drift{0%{transform:translate(0,0)}33%{transform:translate(-2%,1%)}
+    66%{transform:translate(1%,-2%)}100%{transform:translate(0,0)}}
+  #vignette{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(78% 68% at 50% 50%, transparent 38%, rgba(0,0,0,.78) 100%)}
 
-  /* HUD */
-  #hud{
-    position:fixed;left:0;right:0;bottom:0;
-    padding:20px clamp(16px,4vw,44px) 24px;
-    display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
-    font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  #note{position:fixed;top:max(24px,env(safe-area-inset-top));left:0;right:0;
+    text-align:center;font-size:10px;letter-spacing:.42em;opacity:.28;transition:opacity .5s}
+  #link{position:fixed;top:max(22px,env(safe-area-inset-top));right:clamp(16px,4vw,46px);
+    font-size:10px;letter-spacing:.24em;opacity:.3;transition:opacity .4s}
+  #link.on{opacity:.85;color:var(--hot)}
+
+  #caption{
+    position:fixed;left:50%;top:52%;transform:translate(-50%,0);
+    width:min(680px,86vw);text-align:center;font-size:13px;line-height:2;
+    letter-spacing:.06em;color:rgba(255,232,196,.92);
+    text-shadow:0 0 24px rgba(255,140,20,.55);
+    opacity:0;transition:opacity .45s;pointer-events:none;
   }
+  #caption.on{opacity:1}
+  #caption b{display:block;font-weight:400;font-size:10px;letter-spacing:.3em;
+    opacity:.4;margin-bottom:6px;text-transform:uppercase}
+
+  #hud{position:fixed;left:0;right:0;bottom:0;
+    padding:20px clamp(16px,4vw,46px) max(26px,env(safe-area-inset-bottom));
+    display:flex;align-items:flex-end;justify-content:space-between;gap:26px;
+    font-size:11px;letter-spacing:.22em;text-transform:uppercase;transition:opacity .5s}
   #state{display:flex;align-items:center;gap:10px;white-space:nowrap}
   #dot{width:6px;height:6px;border-radius:50%;background:var(--amber);
-       box-shadow:0 0 10px var(--amber);transition:background .3s,box-shadow .3s}
-  #meter{flex:1;max-width:340px;height:1px;background:rgba(255,176,32,.16);position:relative}
-  #meter i{position:absolute;inset:0 auto 0 0;width:0%;background:var(--hot);
-           box-shadow:0 0 8px var(--amber)}
+    box-shadow:0 0 12px var(--amber);transition:background .35s,box-shadow .35s}
+  #meter{flex:1;max-width:360px;height:1px;background:rgba(255,176,32,.14);position:relative}
+  #meter i{position:absolute;inset:0 auto 0 0;width:0;background:var(--hot);
+    box-shadow:0 0 9px var(--amber)}
   #controls{display:flex;gap:8px}
-  button{
-    font:inherit;letter-spacing:.18em;text-transform:uppercase;
-    background:transparent;color:rgba(255,206,130,.8);
-    border:1px solid rgba(255,176,32,.28);padding:9px 16px;
-    cursor:pointer;transition:.2s;
-  }
-  button:hover{border-color:rgba(255,176,32,.7);color:var(--hot);
-               background:rgba(255,140,20,.06)}
+  button{font:inherit;letter-spacing:.18em;text-transform:uppercase;background:transparent;
+    color:rgba(255,206,130,.78);border:1px solid rgba(255,176,32,.26);
+    padding:9px 15px;cursor:pointer;transition:border-color .2s,color .2s,background .2s}
+  button:hover{border-color:rgba(255,176,32,.68);color:var(--hot);background:rgba(255,132,16,.07)}
   button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
   button[aria-pressed="true"]{border-color:var(--amber);color:var(--hot);
-                              background:rgba(255,140,20,.12)}
-  #note{position:fixed;top:22px;left:0;right:0;text-align:center;
-        font-size:10px;letter-spacing:.3em;opacity:.35}
-  @media(max-width:620px){
-    #hud{flex-direction:column;align-items:stretch}
+    background:rgba(255,132,16,.13)}
+  button:disabled{opacity:.3;cursor:not-allowed}
+
+  /* 設定 */
+  #panel{position:fixed;inset:0;display:none;place-items:center;
+    background:rgba(4,6,10,.86);backdrop-filter:blur(6px);z-index:20;
+    padding:24px}
+  #panel.on{display:grid}
+  #panel .box{width:min(520px,100%);border:1px solid rgba(255,176,32,.24);
+    background:rgba(8,11,18,.9);padding:clamp(22px,5vw,34px)}
+  #panel h2{font-size:11px;letter-spacing:.3em;text-transform:uppercase;
+    font-weight:400;color:var(--hot);margin-bottom:18px}
+  #panel p{font-size:12px;line-height:1.9;margin-bottom:14px;color:rgba(255,206,130,.62)}
+  #panel a{color:var(--amber)}
+  #panel input{width:100%;font:inherit;font-size:12px;letter-spacing:.04em;
+    background:rgba(255,176,32,.05);border:1px solid rgba(255,176,32,.24);
+    color:var(--hot);padding:11px 13px;margin-bottom:16px}
+  #panel input:focus{outline:none;border-color:var(--amber)}
+  #panel .row{display:flex;gap:8px;justify-content:flex-end}
+  .warn{font-size:11px;color:rgba(255,150,90,.75);line-height:1.8}
+
+  @media(max-width:640px){
+    #hud{flex-direction:column;align-items:stretch;gap:14px}
     #meter{max-width:none}
-    #controls{justify-content:center}
+    #controls{justify-content:center;flex-wrap:wrap}
+    #caption{top:auto;bottom:34%;font-size:12px}
   }
 </style>
 </head>
 <body>
 <div id="stage"></div>
-<div id="haze"></div>
-<div id="vignette"></div>
+<div id="haze"></div><div id="grain"></div><div id="vignette"></div>
 
 <div id="note">J.A.R.V.I.S. — CORE INTERFACE</div>
+<div id="link">LINK ○ BROWSER</div>
+<div id="caption"><b id="capWho">JARVIS</b><span id="capText"></span></div>
 
 <div id="hud">
   <div id="state"><span id="dot"></span><span id="label">待機中</span></div>
   <div id="meter"><i id="fill"></i></div>
   <div id="controls">
-    <button id="micBtn" aria-pressed="false">マイク</button>
+    <button id="talkBtn">話す (Space)</button>
     <button id="demoBtn">発話テスト</button>
+    <button id="setBtn">設定</button>
+    <button id="fsBtn">全画面 (F)</button>
+  </div>
+</div>
+
+<div id="panel">
+  <div class="box">
+    <h2>設定</h2>
+    <p>会話させるには Anthropic の API キーが必要です。キーは<strong>このブラウザの中だけ</strong>に保存され、どこにも送信されません（Anthropic のAPI以外には）。</p>
+    <input id="keyInput" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+    <p class="warn">共用のPCでは入力しないでください。キーは <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> で発行・失効できます。</p>
+    <div class="row">
+      <button id="clearKey">消去</button>
+      <button id="saveKey">保存</button>
+      <button id="closePanel">閉じる</button>
+    </div>
   </div>
 </div>
 
 <script type="importmap">
-{
-  "imports": {
+{ "imports": {
     "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
     "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-  }
-}
+} }
 </script>
 
 <script type="module">
@@ -101,396 +144,527 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* ══════════════════════════════════════════
-   1. シーン
-   ══════════════════════════════════════════ */
-const scene    = new THREE.Scene();
-const camera   = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 100);
-camera.position.set(0, 0, 3.35);
-
-const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+/* ═════════ シーン ═════════ */
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0,0,3.3);
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.setSize(innerWidth, innerHeight);
 document.getElementById('stage').appendChild(renderer.domElement);
+const group = new THREE.Group(); group.rotation.z = .16; scene.add(group);
 
-const group = new THREE.Group();
-group.rotation.z = 0.18;
-scene.add(group);
-
-/* ══════════════════════════════════════════
-   2. 球殻フィラメントの生成
-   ── 接平面上を「8方向に量子化して」歩かせると
-      回路基板／都市の街区みたいな線になる
-   ══════════════════════════════════════════ */
-const R = 1.0;
-const GOLDEN = Math.PI * (3 - Math.sqrt(5));
-
-function fibPoint(i, n){
-  const y  = 1 - (i / (n - 1)) * 2;
-  const rr = Math.sqrt(Math.max(0, 1 - y*y));
-  const th = i * GOLDEN;
+/* ═════════ 球殻フィラメント ═════════
+   接平面を45°刻みで歩かせる＝回路基板／街区の線
+   ══════════════════════════════════ */
+const R = 1.0, GOLDEN = Math.PI*(3-Math.sqrt(5));
+const fibPoint = (i,n) => {
+  const y=1-(i/(n-1))*2, rr=Math.sqrt(Math.max(0,1-y*y)), th=i*GOLDEN;
   return new THREE.Vector3(Math.cos(th)*rr, y, Math.sin(th)*rr);
-}
+};
 
 function buildFilaments(count){
-  const pos = [], dir = [], rnd = [], seed = [], nodes = [];
-  const up = new THREE.Vector3();
-  const t1 = new THREE.Vector3(), t2 = new THREE.Vector3();
-  const cur = new THREE.Vector3(), nxt = new THREE.Vector3();
+  const pos=[],dir=[],rnd=[],seed=[],nodes=[];
+  const up=new THREE.Vector3(),t1=new THREE.Vector3(),t2=new THREE.Vector3();
+  const cur=new THREE.Vector3(),nxt=new THREE.Vector3();
+  const push=(a,b,d,br,s)=>{pos.push(a.x,a.y,a.z,b.x,b.y,b.z);
+    dir.push(d.x,d.y,d.z,d.x,d.y,d.z);rnd.push(br,br);seed.push(s,s);};
 
-  for(let i=0; i<count; i++){
-    const base = fibPoint(i, count);
-
-    // 接平面の直交基底
-    up.set(0,1,0);
-    if(Math.abs(base.dot(up)) > 0.95) up.set(1,0,0);
-    t1.crossVectors(base, up).normalize();
-    t2.crossVectors(base, t1).normalize();
-
-    const shell = R * (0.93 + Math.random()*0.13);
-    const s     = Math.random();
-    const bright= 0.25 + Math.random()*0.75;
-
+  for(let i=0;i<count;i++){
+    const base=fibPoint(i,count);
+    up.set(0,1,0); if(Math.abs(base.dot(up))>.95) up.set(1,0,0);
+    t1.crossVectors(base,up).normalize(); t2.crossVectors(base,t1).normalize();
+    const shell=R*(.90+Math.random()*.16), s=Math.random(), br=.20+Math.random()*.80;
     cur.copy(base).multiplyScalar(shell);
 
-    if(Math.random() < 0.13){
-      // 放射状のトゲ（外周に飛び出す線）
-      const len = 0.04 + Math.random()*0.24;
-      nxt.copy(base).multiplyScalar(shell + len);
-      pushSeg(cur, nxt, base, bright, s);
-      nodes.push(nxt.x, nxt.y, nxt.z, base.x, base.y, base.z, bright, s);
-      continue;
+    if(Math.random()<.16){                       // 外周のトゲ＝輪郭を真円にしない
+      const len=.03+Math.pow(Math.random(),2)*.34;
+      nxt.copy(base).multiplyScalar(shell+len);
+      push(cur,nxt,base,br,s);
+      nodes.push(nxt.x,nxt.y,nxt.z,base.x,base.y,base.z,br,s); continue;
     }
-
-    // 接平面を折れ線で歩く
-    const steps = 2 + (Math.random()*4|0);
-    let ang = (Math.random()*8|0) * Math.PI/4;
-    for(let k=0; k<steps; k++){
-      ang += ((Math.random()*3|0) - 1) * Math.PI/4;      // -45° / 0 / +45°
-      const len = 0.018 + Math.random()*0.075;
-      nxt.copy(cur)
-         .addScaledVector(t1, Math.cos(ang)*len)
-         .addScaledVector(t2, Math.sin(ang)*len);
-      // 球殻に押し戻す（たまに層を飛び移る）
-      nxt.normalize().multiplyScalar(
-        shell + (Math.random() < 0.18 ? (Math.random()-0.5)*0.07 : 0)
-      );
-      const d = nxt.clone().normalize();
-      pushSeg(cur, nxt, d, bright, s);
-      if(Math.random() < 0.34)
-        nodes.push(nxt.x, nxt.y, nxt.z, d.x, d.y, d.z, bright, s);
+    const steps=2+(Math.random()*5|0);
+    let ang=(Math.random()*8|0)*Math.PI/4;
+    for(let k=0;k<steps;k++){
+      ang+=((Math.random()*3|0)-1)*Math.PI/4;
+      const len=.015+Math.random()*.070;
+      nxt.copy(cur).addScaledVector(t1,Math.cos(ang)*len)
+                   .addScaledVector(t2,Math.sin(ang)*len);
+      nxt.normalize().multiplyScalar(shell+(Math.random()<.20?(Math.random()-.5)*.085:0));
+      const d=nxt.clone().normalize();
+      push(cur,nxt,d,br,s);
+      if(Math.random()<.34) nodes.push(nxt.x,nxt.y,nxt.z,d.x,d.y,d.z,br,s);
       cur.copy(nxt);
     }
   }
-
-  function pushSeg(a, b, d, bright, s){
-    pos.push(a.x,a.y,a.z, b.x,b.y,b.z);
-    dir.push(d.x,d.y,d.z, d.x,d.y,d.z);
-    rnd.push(bright, bright);
-    seed.push(s, s);
-  }
-  return { pos, dir, rnd, seed, nodes };
+  return {pos,dir,rnd,seed,nodes};
 }
 
-function buildArcs(count){
-  // 表面をなぞる大きな円弧＝リファレンスの「掃くような線」
-  const pos = [], dir = [], rnd = [], seed = [];
-  const axis = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3();
-  const q = new THREE.Quaternion();
+function buildArcs(count, structured){
+  const pos=[],dir=[],rnd=[],seed=[];
+  const axis=new THREE.Vector3(),a=new THREE.Vector3(),b=new THREE.Vector3();
+  const q=new THREE.Quaternion();
   for(let i=0;i<count;i++){
-    axis.set(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
-    const start = new THREE.Vector3(0,1,0).cross(axis);
-    if(start.lengthSq() < 1e-4) start.set(1,0,0);
+    if(structured){
+      const tilt=(i/count)*Math.PI;
+      axis.set(Math.sin(tilt)*.35, Math.cos(tilt), Math.sin(tilt)*.94).normalize();
+    } else axis.set(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize();
+    const start=new THREE.Vector3(0,1,0).cross(axis);
+    if(start.lengthSq()<1e-4) start.set(1,0,0);
     start.normalize();
-    const shell = R * (0.99 + Math.random()*0.07);
-    const span  = Math.PI * (0.45 + Math.random()*1.15);
-    const segs  = 200;
-    const s = Math.random(), bright = 0.85 + Math.random()*0.15;
+    const shell=R*(structured?1.005+Math.random()*.03:.98+Math.random()*.09);
+    const span=structured?Math.PI*2:Math.PI*(.4+Math.random()*1.3);
+    const segs=structured?260:190;
+    const s=Math.random(), br=structured?.55:.90+Math.random()*.10;
     for(let k=0;k<segs;k++){
-      q.setFromAxisAngle(axis, span * (k/segs));
+      if(structured && (k%7)>4) continue;        // 破線にして密度を抜く
+      q.setFromAxisAngle(axis,span*(k/segs));
       a.copy(start).applyQuaternion(q).multiplyScalar(shell);
-      q.setFromAxisAngle(axis, span * ((k+1)/segs));
+      q.setFromAxisAngle(axis,span*((k+1)/segs));
       b.copy(start).applyQuaternion(q).multiplyScalar(shell);
-      const d = a.clone().normalize();
-      pos.push(a.x,a.y,a.z, b.x,b.y,b.z);
-      dir.push(d.x,d.y,d.z, d.x,d.y,d.z);
-      rnd.push(bright, bright);
-      seed.push(s, s);
+      const d=a.clone().normalize();
+      pos.push(a.x,a.y,a.z,b.x,b.y,b.z);
+      dir.push(d.x,d.y,d.z,d.x,d.y,d.z);
+      rnd.push(br,br); seed.push(s,s);
     }
   }
-  return { pos, dir, rnd, seed };
+  return {pos,dir,rnd,seed};
 }
 
-/* ══════════════════════════════════════════
-   3. シェーダ（膨らみはGPU側で頂点ごとに）
-   ══════════════════════════════════════════ */
+/* ═════════ シェーダ ═════════ */
 const uniforms = {
-  uLevel : { value: 0 },     // 音声エンベロープ 0–1
-  uTime  : { value: 0 },
-  uBreath: { value: 0 },     // 待機中のゆっくりした呼吸
-  uCool  : { value: 0 },     // 傾聴時にわずかに白青へ
-  uWarm  : { value: new THREE.Color(0xff6a00) },
-  uAmber : { value: new THREE.Color(0xffb020) },
-  uHot   : { value: new THREE.Color(0xfff2cc) },
-  uChill : { value: new THREE.Color(0x9fd8ff) },
-  uScale : { value: 1 },
+  uLevel:{value:0}, uTime:{value:0}, uBreath:{value:0},
+  uCool:{value:0},  uScale:{value:1},
+  uWarm:{value:new THREE.Color(0xff5e00)}, uAmber:{value:new THREE.Color(0xffb020)},
+  uHot:{value:new THREE.Color(0xfff6dc)},  uChill:{value:new THREE.Color(0x9fd8ff)},
 };
-
-const VERT = /* glsl */`
-  attribute vec3  aDir;
-  attribute float aRand;
-  attribute float aSeed;
+const VERT = `
+  attribute vec3 aDir; attribute float aRand; attribute float aSeed;
   uniform float uLevel, uTime, uBreath, uScale;
-  varying float vGlow;
+  varying float vGlow, vDepth, vRad;
   void main(){
-    // 音節ごとの押し出し量。線ごとにバラつかせて風船にならないようにする
-    float push  = uLevel * (0.05 + 0.30 * aRand);
-    float flick = sin(uTime * 2.3 + aSeed * 43.0) * (0.006 + uLevel * 0.022);
-    vec3  p = (position + aDir * (push + uBreath + flick)) * uScale;
-    vGlow   = 0.30 + aRand * 0.35 + uLevel * 0.95;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+    // 線ごとに押し出し量を変える → 風船ではなく「逆立つ」動き
+    float push  = uLevel * (0.04 + 0.32 * aRand);
+    float flick = sin(uTime*2.4 + aSeed*47.0) * (0.005 + uLevel*0.024);
+    vec3 p = (position + aDir*(push + uBreath + flick)) * uScale;
+    vec4 mv = modelViewMatrix * vec4(p,1.0);
+    vDepth = smoothstep(-1.25, 1.25, mv.z);      // 奥を暗く＝立体感
+    vRad   = clamp(length(position), 0.0, 1.4);
+    vGlow  = 0.28 + aRand*0.38 + uLevel*0.95;
+    gl_Position = projectionMatrix * mv;
   }`;
-
-const FRAG = /* glsl */`
-  uniform vec3  uWarm, uAmber, uHot, uChill;
-  uniform float uCool;
-  varying float vGlow;
+const FRAG = `
+  uniform vec3 uWarm, uAmber, uHot, uChill; uniform float uCool;
+  varying float vGlow, vDepth, vRad;
   void main(){
-    vec3 c = mix(uWarm, uAmber, clamp(vGlow, 0.0, 1.0));
-    c = mix(c, uHot, clamp(vGlow - 0.85, 0.0, 1.0));
-    c = mix(c, uChill, uCool * 0.45);
-    gl_FragColor = vec4(c * (0.55 + vGlow * 0.75), 1.0);
+    vec3 c = mix(uWarm, uAmber, clamp(vGlow,0.0,1.0));
+    c = mix(uHot, c, smoothstep(0.15, 0.85, vRad));   // 中心ほど白熱
+    c = mix(c, uHot, clamp(vGlow-0.88,0.0,1.0));
+    c = mix(c, uChill, uCool*0.42);
+    float f = (0.55 + vGlow*0.72) * (0.34 + vDepth*0.86);
+    gl_FragColor = vec4(c*f, 1.0);
   }`;
+const mat = (boost=1) => new THREE.ShaderMaterial({
+  uniforms, vertexShader:VERT,
+  fragmentShader:FRAG.replace('0.55 +',(0.55*boost)+' +'),
+  blending:THREE.AdditiveBlending, depthWrite:false, transparent:true});
 
-function makeMaterial(opacityBoost){
-  return new THREE.ShaderMaterial({
-    uniforms, vertexShader: VERT,
-    fragmentShader: FRAG.replace('0.55 +', (0.55 * opacityBoost) + ' +'),
-    blending: THREE.AdditiveBlending,
-    depthWrite: false, transparent: true,
-  });
-}
-
-function toGeometry(d){
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(d.pos, 3));
-  g.setAttribute('aDir',     new THREE.Float32BufferAttribute(d.dir, 3));
-  g.setAttribute('aRand',    new THREE.Float32BufferAttribute(d.rnd, 1));
-  g.setAttribute('aSeed',    new THREE.Float32BufferAttribute(d.seed,1));
+function geom(d){
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(d.pos,3));
+  g.setAttribute('aDir',    new THREE.Float32BufferAttribute(d.dir,3));
+  g.setAttribute('aRand',   new THREE.Float32BufferAttribute(d.rnd,1));
+  g.setAttribute('aSeed',   new THREE.Float32BufferAttribute(d.seed,1));
   return g;
 }
 
-const fil = buildFilaments(3200);
-group.add(new THREE.LineSegments(toGeometry(fil), makeMaterial(1.0)));
-group.add(new THREE.LineSegments(toGeometry(buildArcs(11)), makeMaterial(1.35)));
-
-// 交点の光点
-const ng = new THREE.BufferGeometry();
-const np = [], nd = [], nr = [], ns = [];
-for(let i=0; i<fil.nodes.length; i+=8){
-  np.push(fil.nodes[i], fil.nodes[i+1], fil.nodes[i+2]);
-  nd.push(fil.nodes[i+3], fil.nodes[i+4], fil.nodes[i+5]);
-  nr.push(fil.nodes[i+6]); ns.push(fil.nodes[i+7]);
+function buildPlates(count){
+  // 球面に貼りつく矩形パネル＝混沌の中に幾何を入れて「構造物」に見せる
+  const pos=[],dir=[],rnd=[],seed=[];
+  const up=new THREE.Vector3(),t1=new THREE.Vector3(),t2=new THREE.Vector3();
+  const n=new THREE.Vector3(),c=new THREE.Vector3();
+  const P=[new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()];
+  for(let i=0;i<count;i++){
+    n.set(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize();
+    up.set(0,1,0); if(Math.abs(n.dot(up))>.95) up.set(1,0,0);
+    t1.crossVectors(n,up).normalize(); t2.crossVectors(n,t1).normalize();
+    const shell=R*(.93+Math.random()*.14);
+    const a=.02+Math.random()*.075, b=.02+Math.random()*.075;
+    const rot=Math.random()*Math.PI, ca=Math.cos(rot), sa=Math.sin(rot);
+    const s=Math.random(), br=.45+Math.random()*.55;
+    c.copy(n).multiplyScalar(shell);
+    const sx=[-a,a,a,-a], sy=[-b,-b,b,b];
+    for(let k=0;k<4;k++){
+      const u=sx[k]*ca-sy[k]*sa, v=sx[k]*sa+sy[k]*ca;
+      P[k].copy(c).addScaledVector(t1,u).addScaledVector(t2,v);
+    }
+    for(let k=0;k<4;k++){
+      const A=P[k], B=P[(k+1)%4];
+      pos.push(A.x,A.y,A.z,B.x,B.y,B.z);
+      dir.push(n.x,n.y,n.z,n.x,n.y,n.z);
+      rnd.push(br,br); seed.push(s,s);
+    }
+  }
+  return {pos,dir,rnd,seed};
 }
-ng.setAttribute('position', new THREE.Float32BufferAttribute(np,3));
-ng.setAttribute('aDir',     new THREE.Float32BufferAttribute(nd,3));
-ng.setAttribute('aRand',    new THREE.Float32BufferAttribute(nr,1));
-ng.setAttribute('aSeed',    new THREE.Float32BufferAttribute(ns,1));
-const nodeMat = new THREE.ShaderMaterial({
-  uniforms,
-  vertexShader: VERT.replace('gl_Position =',
-    'gl_PointSize = 1.6 + uLevel * 2.4;\n    gl_Position ='),
-  fragmentShader: FRAG,
-  blending: THREE.AdditiveBlending, depthWrite:false, transparent:true,
-});
-group.add(new THREE.Points(ng, nodeMat));
 
-// 中心の熱源
-const coreCanvas = document.createElement('canvas');
-coreCanvas.width = coreCanvas.height = 128;
+function buildSpokes(count){
+  // 中心から放射する骨。球の内側に奥行きを与える
+  const pos=[],dir=[],rnd=[],seed=[];
+  const n=new THREE.Vector3(),a=new THREE.Vector3(),b=new THREE.Vector3();
+  for(let i=0;i<count;i++){
+    n.set(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize();
+    const r0=.10+Math.random()*.30, r1=r0+.15+Math.random()*.55;
+    a.copy(n).multiplyScalar(r0); b.copy(n).multiplyScalar(Math.min(r1,R*.98));
+    const s=Math.random(), br=.12+Math.random()*.30;
+    pos.push(a.x,a.y,a.z,b.x,b.y,b.z);
+    dir.push(n.x,n.y,n.z,n.x,n.y,n.z);
+    rnd.push(br,br); seed.push(s,s);
+  }
+  return {pos,dir,rnd,seed};
+}
+
+const SMALL = innerWidth < 700;
+const DENSITY = SMALL ? 2600 : 5600;
+
+const fil = buildFilaments(DENSITY);                       // 外殻
+group.add(new THREE.LineSegments(geom(fil), mat(1.0)));
+group.add(new THREE.LineSegments(geom(buildArcs(16,false)), mat(1.4)));
+group.add(new THREE.LineSegments(geom(buildArcs(9,true)),   mat(0.8)));
+group.add(new THREE.LineSegments(geom(buildPlates(SMALL?220:520)), mat(1.25)));
+group.add(new THREE.LineSegments(geom(buildSpokes(SMALL?300:700)), mat(0.5)));
+
+// 内殻：外殻越しに透けて見える層。これがあると中身の詰まった球になる
 {
-  const c = coreCanvas.getContext('2d');
-  const g = c.createRadialGradient(64,64,0, 64,64,64);
-  g.addColorStop(0,   'rgba(255,244,214,1)');
-  g.addColorStop(0.25,'rgba(255,176,32,.55)');
-  g.addColorStop(1,   'rgba(255,110,0,0)');
-  c.fillStyle = g; c.fillRect(0,0,128,128);
+  const inner = buildFilaments(SMALL?900:1900);
+  const p = inner.pos;
+  for(let i=0;i<p.length;i++) p[i] *= 0.62;                // 縮めて内側へ
+  group.add(new THREE.LineSegments(geom(inner), mat(0.42)));
 }
-const core = new THREE.Sprite(new THREE.SpriteMaterial({
-  map: new THREE.CanvasTexture(coreCanvas),
-  blending: THREE.AdditiveBlending, depthWrite:false, transparent:true,
-}));
-core.scale.setScalar(1.5);
-group.add(core);
 
-/* ══════════════════════════════════════════
-   4. ポストプロセス
-   ══════════════════════════════════════════ */
+/* 中心の熱源と光条 */
+function sprite(draw,w,h){
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  draw(cv.getContext('2d'),w,h);
+  return new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),
+    blending:THREE.AdditiveBlending, depthWrite:false, transparent:true}));
+}
+const core = sprite(c=>{
+  const g=c.createRadialGradient(64,64,0,64,64,64);
+  g.addColorStop(0,'rgba(255,248,226,1)');
+  g.addColorStop(.22,'rgba(255,176,32,.6)');
+  g.addColorStop(1,'rgba(255,94,0,0)');
+  c.fillStyle=g; c.fillRect(0,0,128,128);
+},128,128);
+core.scale.setScalar(1.45); group.add(core);
+
+const streak = sprite((c,w,h)=>{
+  const g=c.createLinearGradient(0,0,w,0);
+  g.addColorStop(0,'rgba(255,150,30,0)');
+  g.addColorStop(.5,'rgba(255,232,190,.85)');
+  g.addColorStop(1,'rgba(255,150,30,0)');
+  c.fillStyle=g; c.fillRect(0,h/2-1.5,w,3);
+},512,16);
+streak.scale.set(4.2,.13,1); scene.add(streak);
+
 const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(
-  new THREE.Vector2(innerWidth, innerHeight), 1.05, 0.75, 0.02);
+composer.addPass(new RenderPass(scene,camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.0,.72,.015);
 composer.addPass(bloom);
 
-/* ══════════════════════════════════════════
-   5. 音声 → エンベロープ
-   ここが「しゃべってる感」の全部。
-   立ち上がり速く(0.4) / 戻り遅く(0.07) にすると
-   音節ごとに膨らんで戻る動きになる
-   ══════════════════════════════════════════ */
-let audioCtx = null, analyser = null, buf = null;
-let level = 0, state = 'idle', demoUntil = 0, micStream = null;
-
-const ATTACK = 0.40, RELEASE = 0.07, GAIN = 3.2, FLOOR = 0.015;
+/* ═════════ 音声エンベロープ ═════════
+   立ち上がり速く / 戻り遅く が「しゃべってる感」の核
+   ═════════════════════════════════ */
+const ATTACK=.40, RELEASE=.07, GAIN=3.2, FLOOR=.015;
+let audioCtx=null, analyser=null, buf=null;
+let level=0, state='idle', demoUntil=0, micStream=null, synthSpeaking=false;
+let extLevel=0, extUntil=0;
 
 function ensureAudio(){
   if(!audioCtx){
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
     analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.25;
+    analyser.fftSize=1024; analyser.smoothingTimeConstant=.25;
     buf = new Uint8Array(analyser.fftSize);
   }
-  if(audioCtx.state === 'suspended') audioCtx.resume();
+  if(audioCtx.state==='suspended') audioCtx.resume();
   return audioCtx;
 }
 
+// 音節っぽい包絡。ブラウザ音声合成は波形が取れないのでこれで代用する
+function syllables(t){
+  const e=(Math.sin(t*13.5)*.5+.5)*(.45+.55*Math.abs(Math.sin(t*2.1)));
+  return Math.sin(t*3.3)>-.55 ? e : .02;
+}
+
 function rawLevel(t){
-  if(performance.now() < demoUntil){
-    // 発話テスト：音節っぽい包絡を合成
-    const e = (Math.sin(t*13.5)*0.5+0.5) * (0.45+0.55*Math.abs(Math.sin(t*2.1)));
-    return Math.sin(t*3.3) > -0.55 ? e : 0.02;
-  }
+  const now=performance.now();
+  if(now<demoUntil || synthSpeaking) return syllables(t);
+  if(now<extUntil) return extLevel;
   if(!analyser) return 0;
   analyser.getByteTimeDomainData(buf);
-  let sum = 0;
-  for(let i=0;i<buf.length;i++){ const v = (buf[i]-128)/128; sum += v*v; }
-  const rms = Math.sqrt(sum/buf.length);
-  return Math.min(1, Math.max(0, rms - FLOOR) * GAIN);
+  let sum=0;
+  for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128; sum+=v*v;}
+  return Math.min(1, Math.max(0, Math.sqrt(sum/buf.length)-FLOOR)*GAIN);
 }
 
-/* ══════════════════════════════════════════
-   6. 状態
-   ══════════════════════════════════════════ */
-const dot = document.getElementById('dot');
-const label = document.getElementById('label');
-const fill = document.getElementById('fill');
-const LABELS = { idle:'待機中', listening:'傾聴中', speaking:'応答中' };
-const COLORS = { idle:'#ff8c1a', listening:'#9fd8ff', speaking:'#fff2cc' };
+/* ═════════ 状態と字幕 ═════════ */
+const dot=document.getElementById('dot'), label=document.getElementById('label');
+const fill=document.getElementById('fill'), linkEl=document.getElementById('link');
+const capEl=document.getElementById('caption'), capText=document.getElementById('capText');
+const capWho=document.getElementById('capWho');
+const LABELS={idle:'待機中',listening:'傾聴中',thinking:'思考中',speaking:'応答中'};
+const COLORS={idle:'#ff8c1a',listening:'#9fd8ff',thinking:'#ffd27a',speaking:'#fff2cc'};
 
 function setState(s){
-  state = s;
-  label.textContent = LABELS[s] || s;
-  dot.style.background = COLORS[s];
-  dot.style.boxShadow  = `0 0 12px ${COLORS[s]}`;
+  state=s; label.textContent=LABELS[s]||s;
+  dot.style.background=COLORS[s]||COLORS.idle;
+  dot.style.boxShadow=`0 0 13px ${COLORS[s]||COLORS.idle}`;
+}
+let capTimer;
+function caption(who, text, hold=5200){
+  clearTimeout(capTimer);
+  capWho.textContent=who; capText.textContent=text;
+  capEl.classList.add('on');
+  if(hold) capTimer=setTimeout(()=>capEl.classList.remove('on'), hold);
 }
 
-/* ══════════════════════════════════════════
-   7. 外部API（Python側から叩く用）
-   ══════════════════════════════════════════ */
-window.JARVIS = {
-  setState,
+/* ═════════ 頭脳（ブラウザから直接 Claude を叩く） ═════════ */
+const KEY='jarvis.anthropic.key';
+const SYSTEM=`あなたは個人アシスタント「JARVIS」。
+- 音声で読み上げられるので、短く、1〜3文で答える。
+- 箇条書きや記号は使わない。話し言葉で。
+- 落ち着いた執事のような口調。過度に恭しくはしない。
+- 分からないことは正直に言う。`;
+let history=[];
 
-  // VOICEVOXのWAVをここに流すと、その波形で球体が膨らむ
+async function askClaude(text){
+  const key = localStorage.getItem(KEY);
+  if(!key) return '会話するには設定から API キーを入れてください。';
+  history.push({role:'user', content:text});
+  const res = await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key':key,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true',
+    },
+    body:JSON.stringify({model:'claude-sonnet-5', max_tokens:400,
+                         system:SYSTEM, messages:history}),
+  });
+  if(!res.ok){
+    history.pop();
+    if(res.status===401) return 'API キーが無効のようです。設定を確認してください。';
+    return `応答できませんでした。（${res.status}）`;
+  }
+  const data = await res.json();
+  const reply = data.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+  history.push({role:'assistant', content:reply});
+  if(history.length>20) history = history.slice(-20);
+  return reply;
+}
+
+/* ═════════ 口（ブラウザ音声合成・男性の低い声を選ぶ） ═════════ */
+const MALE_JA = ['Otoya','Ichiro','Hattori','Daichi','男性','Male'];
+function pickVoice(){
+  const all = speechSynthesis.getVoices().filter(v=>v.lang.replace('_','-').startsWith('ja'));
+  if(!all.length) return null;
+  for(const want of MALE_JA){
+    const v = all.find(v=>v.name.includes(want));
+    if(v) return v;
+  }
+  return all[0];
+}
+let voice=null;
+const loadVoice=()=>{ voice = pickVoice(); };
+loadVoice(); speechSynthesis.onvoiceschanged = loadVoice;
+
+function speakBrowser(text){
+  return new Promise(res=>{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang='ja-JP';
+    if(voice) u.voice=voice;
+    u.pitch=0.65;      // 低く
+    u.rate=0.95;       // 少しゆっくり
+    u.onstart=()=>{ synthSpeaking=true; setState('speaking'); };
+    u.onend=u.onerror=()=>{ synthSpeaking=false; setState('idle'); res(); };
+    speechSynthesis.speak(u);
+  });
+}
+
+/* ═════════ 耳（ブラウザ音声認識） ═════════ */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec=null, listening=false;
+
+if(SR){
+  rec = new SR();
+  rec.lang='ja-JP'; rec.continuous=false; rec.interimResults=true;
+  rec.onstart = () => { listening=true; setState('listening'); };
+  rec.onerror = e => {
+    listening=false; setState('idle');
+    if(e.error==='not-allowed') caption('SYSTEM','マイクの使用が許可されていません');
+  };
+  rec.onend = () => { listening=false; if(state==='listening') setState('idle'); };
+  rec.onresult = async ev => {
+    let text='', final=false;
+    for(const r of ev.results){ text+=r[0].transcript; if(r.isFinal) final=true; }
+    caption('YOU', text, final?2600:0);
+    if(!final) return;
+    setState('thinking');
+    const reply = await askClaude(text.trim());
+    caption('JARVIS', reply, 7000);
+    await speakBrowser(reply);
+  };
+}
+
+async function startListening(){
+  ensureAudio();
+  if(!micStream){
+    try{
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio:{echoCancellation:true, noiseSuppression:true}});
+      audioCtx.createMediaStreamSource(micStream).connect(analyser);
+    }catch(e){ caption('SYSTEM','マイクを使用できません'); return; }
+  }
+  if(!rec){ caption('SYSTEM','このブラウザは音声認識に未対応です（Chrome推奨）'); return; }
+  try{ rec.start(); }catch(e){}
+}
+
+/* ═════════ Python 版があればそちらを優先 ═════════ */
+window.JARVIS = {
+  setState, caption,
   async speak(src){
     ensureAudio();
     const url = src instanceof Blob ? URL.createObjectURL(src) : src;
-    const el  = new Audio(url);
-    el.crossOrigin = 'anonymous';
+    const el = new Audio(url); el.crossOrigin='anonymous';
     const node = audioCtx.createMediaElementSource(el);
-    node.connect(analyser);
-    node.connect(audioCtx.destination);
-    setState('speaking');
+    node.connect(analyser); node.connect(audioCtx.destination);
+    extUntil=0; setState('speaking');
     await el.play();
-    return new Promise(res => {
-      el.onended = () => { setState('idle'); node.disconnect(); res(); };
-    });
-  },
-
-  // Python側のWebSocketに繋ぐ（{type:"state"} / 生のWAVバイナリ）
-  connect(url = 'ws://127.0.0.1:8765'){
-    const ws = new WebSocket(url);
-    ws.binaryType = 'blob';
-    ws.onmessage = ev => {
-      if(ev.data instanceof Blob) window.JARVIS.speak(ev.data);
-      else { try{ setState(JSON.parse(ev.data).state); }catch(e){} }
-    };
-    ws.onerror = () => {};
-    return ws;
+    return new Promise(r=>{ el.onended=()=>{
+      setState('idle'); node.disconnect();
+      if(src instanceof Blob) URL.revokeObjectURL(url); r();
+    };});
   },
 };
 
-/* ══════════════════════════════════════════
-   8. UI
-   ══════════════════════════════════════════ */
-const micBtn = document.getElementById('micBtn');
-micBtn.onclick = async () => {
-  if(micStream){
-    micStream.getTracks().forEach(t => t.stop());
-    micStream = null;
-    micBtn.setAttribute('aria-pressed','false');
-    setState('idle');
-    return;
-  }
-  try{
-    ensureAudio();
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio:{ echoCancellation:true, noiseSuppression:true }
-    });
-    audioCtx.createMediaStreamSource(micStream).connect(analyser);
-    micBtn.setAttribute('aria-pressed','true');
-    setState('listening');
-  }catch(e){
-    label.textContent = 'マイクを使用できません';
-  }
-};
+// localhost の Python を静かに探しに行く。無ければブラウザ単体で動く
+(function connectLocal(url='ws://127.0.0.1:8765'){
+  let ws;
+  try{ ws = new WebSocket(url); }catch(e){ return; }
+  ws.binaryType='blob';
+  ws.onopen = () => { linkEl.textContent='LINK ● LOCAL'; linkEl.classList.add('on'); };
+  ws.onclose = () => {
+    linkEl.textContent='LINK ○ BROWSER'; linkEl.classList.remove('on');
+    setTimeout(()=>connectLocal(url), 8000);
+  };
+  ws.onerror = () => {};
+  ws.onmessage = ev => {
+    if(ev.data instanceof Blob){ window.JARVIS.speak(ev.data); return; }
+    try{
+      const m = JSON.parse(ev.data);
+      if(m.state) setState(m.state);
+      if(m.text)  caption(m.who||'JARVIS', m.text);
+      if(typeof m.level==='number'){ extLevel=m.level; extUntil=performance.now()+250; }
+    }catch(e){}
+  };
+})();
+
+/* ═════════ UI ═════════ */
+const talkBtn=document.getElementById('talkBtn');
+talkBtn.onclick = () => listening ? rec.stop() : startListening();
+if(!SR){ talkBtn.disabled=true; talkBtn.textContent='音声認識に未対応'; }
 
 document.getElementById('demoBtn').onclick = () => {
-  demoUntil = performance.now() + 4000;
-  setState('speaking');
-  setTimeout(() => setState(micStream ? 'listening' : 'idle'), 4000);
+  demoUntil=performance.now()+4000; setState('speaking');
+  setTimeout(()=>setState('idle'),4000);
 };
 
-/* ══════════════════════════════════════════
-   9. ループ
-   ══════════════════════════════════════════ */
-const clock = new THREE.Clock();
-function loop(){
+const fsBtn=document.getElementById('fsBtn');
+function toggleFS(){
+  if(document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen({navigationUI:'hide'})
+       .catch(()=>caption('SYSTEM','全画面にできません'));
+}
+fsBtn.onclick=toggleFS;
+document.addEventListener('fullscreenchange',()=>{
+  fsBtn.textContent = document.fullscreenElement ? '全画面解除 (F)' : '全画面 (F)';
+});
+
+const panel=document.getElementById('panel'), keyInput=document.getElementById('keyInput');
+document.getElementById('setBtn').onclick = () => {
+  keyInput.value = localStorage.getItem(KEY) || '';
+  panel.classList.add('on'); keyInput.focus();
+};
+document.getElementById('closePanel').onclick = () => panel.classList.remove('on');
+document.getElementById('saveKey').onclick = () => {
+  const v = keyInput.value.trim();
+  if(v) localStorage.setItem(KEY, v);
+  panel.classList.remove('on');
+  caption('SYSTEM', v ? 'キーを保存しました' : 'キーが空です', 2600);
+};
+document.getElementById('clearKey').onclick = () => {
+  localStorage.removeItem(KEY); keyInput.value='';
+  caption('SYSTEM','キーを消去しました',2600);
+};
+
+addEventListener('keydown', e => {
+  if(panel.classList.contains('on')){
+    if(e.key==='Escape') panel.classList.remove('on');
+    return;
+  }
+  if(document.activeElement?.tagName==='BUTTON') return;
+  if(e.key==='f'||e.key==='F') toggleFS();
+  if(e.code==='Space'){ e.preventDefault(); listening ? rec.stop() : startListening(); }
+});
+
+let idleTimer;
+function wake(){
+  document.body.classList.remove('hide-ui');
+  clearTimeout(idleTimer);
+  idleTimer=setTimeout(()=>document.body.classList.add('hide-ui'),3200);
+}
+['mousemove','keydown','touchstart','click'].forEach(e=>addEventListener(e,wake));
+wake();
+
+/* ═════════ ループ ═════════ */
+const clock=new THREE.Clock();
+(function loop(){
   requestAnimationFrame(loop);
-  const t  = clock.getElapsedTime();
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const t=clock.getElapsedTime(), dt=Math.min(clock.getDelta(),.05);
 
   const target = rawLevel(t);
-  level += (target - level) * (target > level ? ATTACK : RELEASE);
+  level += (target-level) * (target>level ? ATTACK : RELEASE);
 
-  uniforms.uTime.value   = t;
-  uniforms.uLevel.value  = level;
-  uniforms.uBreath.value = (REDUCED ? 0.004 : 0.012) * Math.sin(t * 0.55);
-  uniforms.uCool.value  += ((state === 'listening' ? 1 : 0) - uniforms.uCool.value) * 0.05;
+  uniforms.uTime.value=t;
+  uniforms.uLevel.value=level;
+  uniforms.uBreath.value=(REDUCED?.004:.012)*Math.sin(t*.55);
+  uniforms.uCool.value += ((state==='listening'?1:0)-uniforms.uCool.value)*.05;
 
-  // 傾聴中はわずかに締まり、応答中は膨らむ
-  const wanted = state === 'listening' ? 0.965 : 1 + level * 0.075;
-  uniforms.uScale.value += (wanted - uniforms.uScale.value) * 0.12;
+  const wanted = state==='listening' ? .962 : 1+level*.078;
+  uniforms.uScale.value += (wanted-uniforms.uScale.value)*.12;
 
-  const spin = REDUCED ? 0.02 : 0.075;
-  group.rotation.y += dt * (spin + level * 0.14);
-  group.rotation.x  = Math.sin(t * 0.21) * 0.11;
+  group.rotation.y += dt*((REDUCED?.02:.072)+level*.15);
+  group.rotation.x  = Math.sin(t*.21)*.10;
 
-  core.scale.setScalar(1.5 + level * 1.5);
-  core.material.opacity = 0.55 + level * 0.45;
-  bloom.strength = 0.85 + level * 1.25;
+  core.scale.setScalar(1.45+level*1.6);
+  core.material.opacity=.5+level*.5;
+  streak.scale.set(3.6+level*2.6,.13,1);
+  streak.material.opacity=.10+level*.42;
+  bloom.strength=.82+level*1.30;
 
-  fill.style.width = (level * 100).toFixed(1) + '%';
+  fill.style.width=(level*100).toFixed(1)+'%';
   composer.render();
-}
-loop();
+})();
 
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-  composer.setSize(innerWidth, innerHeight);
-  bloom.resolution.set(innerWidth, innerHeight);
+  renderer.setSize(innerWidth,innerHeight);
+  composer.setSize(innerWidth,innerHeight);
+  bloom.resolution.set(innerWidth,innerHeight);
 });
 </script>
 </body>

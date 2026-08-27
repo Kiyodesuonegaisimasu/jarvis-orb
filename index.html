@@ -106,7 +106,7 @@
 <div id="stage"></div>
 <div id="haze"></div><div id="grain"></div><div id="vignette"></div>
 
-<div id="note">J.A.R.V.I.S. — CORE INTERFACE · BUILD 4</div>
+<div id="note">J.A.R.V.I.S. — CORE INTERFACE · BUILD 5</div>
 <div id="link">LINK ○ BROWSER</div>
 <div id="caption"><b id="capWho">JARVIS</b><span id="capText"></span></div>
 
@@ -124,7 +124,7 @@
 <div id="panel">
   <div class="box">
     <h2>設定</h2>
-    <p>会話させるには Anthropic の API キーが必要です。キーは<strong>このブラウザの中だけ</strong>に保存され、どこにも送信されません（Anthropic のAPI以外には）。</p>
+    <p><strong>キーは無くても動きます。</strong>時刻・日付・計算・タイマー・全画面の操作にはそのまま答えます。<br>自由に会話させたいときだけ、Anthropic の API キーを入れてください。キーは<strong>このブラウザの中だけ</strong>に保存され、Anthropic の API 以外には送信されません。</p>
     <input id="keyInput" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
     <p class="warn">共用のPCでは入力しないでください。キーは <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> で発行・失効できます。</p>
 
@@ -348,14 +348,14 @@ group.add(new THREE.LineSegments(geom(fil), mat(1.0)));
 group.add(new THREE.LineSegments(geom(buildArcs(16,false)), mat(1.4)));
 group.add(new THREE.LineSegments(geom(buildArcs(9,true)),   mat(0.8)));
 group.add(new THREE.LineSegments(geom(buildPlates(SMALL?220:520)), mat(1.25)));
-group.add(new THREE.LineSegments(geom(buildSpokes(SMALL?300:700)), mat(0.5)));
+group.add(new THREE.LineSegments(geom(buildSpokes(SMALL?140:300)), mat(0.20)));
 
 // 内殻：外殻越しに透けて見える層。これがあると中身の詰まった球になる
 {
   const inner = buildFilaments(SMALL?900:1900);
   const p = inner.pos;
   for(let i=0;i<p.length;i++) p[i] *= 0.62;                // 縮めて内側へ
-  group.add(new THREE.LineSegments(geom(inner), mat(0.42)));
+  group.add(new THREE.LineSegments(geom(inner), mat(0.28)));
 }
 
 /* 中心の熱源と光条 */
@@ -372,7 +372,7 @@ const core = sprite(c=>{
   g.addColorStop(1,'rgba(255,94,0,0)');
   c.fillStyle=g; c.fillRect(0,0,128,128);
 },128,128);
-core.scale.setScalar(1.45); group.add(core);
+core.scale.setScalar(0.85); group.add(core);
 
 const streak = sprite((c,w,h)=>{
   const g=c.createLinearGradient(0,0,w,0);
@@ -385,7 +385,7 @@ streak.scale.set(4.2,.13,1); scene.add(streak);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene,camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.0,.72,.015);
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.70,.70,.10);
 composer.addPass(bloom);
 
 /* ═════════ 音声エンベロープ ═════════
@@ -518,10 +518,10 @@ function localBrain(raw){
   // フォールバック。同じ催促を繰り返さない
   hintCount++;
   if(hintCount === 1)
-    return '今はローカル応答です。時刻、日付、計算、タイマー、全画面の操作ならお答えできます。';
-  if(hintCount % 6 === 0)
-    return '込み入った話をするなら、設定からAPIキーを入れてください。';
-  const ack = ['承知しました。','聞いています。','なるほど。','ええ。'];
+    return 'そちらは私の手には余ります。時刻や日付、計算、タイマー、全画面の操作ならお任せください。';
+  if(hintCount % 7 === 0)
+    return '時刻、日付、計算、タイマー、全画面。このあたりならお任せください。';
+  const ack = ['承知しました。','聞いています。','なるほど。','ええ。','はい。'];
   return ack[hintCount % ack.length];
 }
 
@@ -545,7 +545,7 @@ async function think(text){
     if(!res.ok){
       history.pop();
       return res.status===401
-        ? 'APIキーが無効のようです。ひとまずローカルで答えます。' + localBrain(text)
+        ? localBrain(text)
         : localBrain(text);
     }
     const data = await res.json();
@@ -791,11 +791,11 @@ const clock=new THREE.Clock();
   group.rotation.y += dt*((REDUCED?.02:.072)+level*.15);
   group.rotation.x  = Math.sin(t*.21)*.10;
 
-  core.scale.setScalar(1.45+level*1.6);
-  core.material.opacity=.5+level*.5;
+  core.scale.setScalar(0.85+level*0.9);
+  core.material.opacity=.22+level*.38;
   streak.scale.set(3.6+level*2.6,.13,1);
-  streak.material.opacity=.10+level*.42;
-  bloom.strength=.82+level*1.30;
+  streak.material.opacity=.05+level*.26;
+  bloom.strength=.52+level*0.95;
 
   fill.style.width=(level*100).toFixed(1)+'%';
   composer.render();

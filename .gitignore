@@ -1,0 +1,19 @@
+# 秘密情報は絶対に入れない
+.env
+.env.*
+*.key
+secrets.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# モデルキャッシュ
+models/
+*.bin
+
+# OS
+.DS_Store
+Thumbs.db

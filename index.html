@@ -87,6 +87,12 @@
   #panel input:focus{outline:none;border-color:var(--amber)}
   #panel .row{display:flex;gap:8px;justify-content:flex-end}
   .warn{font-size:11px;color:rgba(255,150,90,.75);line-height:1.8}
+  #panel select{width:100%;font:inherit;font-size:12px;background:rgba(255,176,32,.05);
+    border:1px solid rgba(255,176,32,.24);color:var(--hot);padding:10px 12px;margin-bottom:14px}
+  #panel .sl{display:flex;align-items:center;gap:12px;font-size:11px;letter-spacing:.18em;
+    text-transform:uppercase;margin-bottom:10px;color:rgba(255,206,130,.62)}
+  #panel .sl input{flex:1;accent-color:var(--amber)}
+  #panel .sl span{width:34px;text-align:right;color:var(--hot)}
 
   @media(max-width:640px){
     #hud{flex-direction:column;align-items:stretch;gap:14px}
@@ -121,8 +127,18 @@
     <p>会話させるには Anthropic の API キーが必要です。キーは<strong>このブラウザの中だけ</strong>に保存され、どこにも送信されません（Anthropic のAPI以外には）。</p>
     <input id="keyInput" type="password" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
     <p class="warn">共用のPCでは入力しないでください。キーは <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> で発行・失効できます。</p>
+
+    <h2 style="margin-top:26px">声</h2>
+    <p>読み上げに使う音声。端末に入っているものから選べます。<strong>Google 日本語</strong>があれば一番自然です。</p>
+    <select id="voiceSel"></select>
+    <label class="sl">高さ <input id="pitchR" type="range" min="0.5" max="1.5" step="0.05"><span id="pitchV"></span></label>
+    <label class="sl">速さ <input id="rateR" type="range" min="0.6" max="1.4" step="0.05"><span id="rateV"></span></label>
+    <div class="row" style="margin-bottom:18px">
+      <button id="testVoice">試聴</button>
+    </div>
+
     <div class="row">
-      <button id="clearKey">消去</button>
+      <button id="clearKey">キー消去</button>
       <button id="saveKey">保存</button>
       <button id="closePanel">閉じる</button>
     </div>
@@ -429,7 +445,9 @@ function caption(who, text, hold=5200){
   if(hold) capTimer=setTimeout(()=>capEl.classList.remove('on'), hold);
 }
 
-/* ═════════ 頭脳（ブラウザから直接 Claude を叩く） ═════════ */
+/* ═════════ 頭脳 ═════════
+   キーが無くても黙らない。ローカルで応えられるものは応える
+   ═══════════════════════════════════════════════════ */
 const KEY='jarvis.anthropic.key';
 const SYSTEM=`あなたは個人アシスタント「JARVIS」。
 - 音声で読み上げられるので、短く、1〜3文で答える。
@@ -438,59 +456,154 @@ const SYSTEM=`あなたは個人アシスタント「JARVIS」。
 - 分からないことは正直に言う。`;
 let history=[];
 
-async function askClaude(text){
-  const key = localStorage.getItem(KEY);
-  if(!key) return '会話するには設定から API キーを入れてください。';
-  history.push({role:'user', content:text});
-  const res = await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{
-      'content-type':'application/json',
-      'x-api-key':key,
-      'anthropic-version':'2023-06-01',
-      'anthropic-dangerous-direct-browser-access':'true',
-    },
-    body:JSON.stringify({model:'claude-sonnet-5', max_tokens:400,
-                         system:SYSTEM, messages:history}),
-  });
-  if(!res.ok){
-    history.pop();
-    if(res.status===401) return 'API キーが無効のようです。設定を確認してください。';
-    return `応答できませんでした。（${res.status}）`;
-  }
-  const data = await res.json();
-  const reply = data.content.filter(b=>b.type==='text').map(b=>b.text).join('');
-  history.push({role:'assistant', content:reply});
-  if(history.length>20) history = history.slice(-20);
-  return reply;
+const zen2han = s => s.replace(/[０-９．－]/g, c => '０１２３４５６７８９．－'.indexOf(c) < 10
+  ? '0123456789'['０１２３４５６７８９'.indexOf(c)] : (c === '．' ? '.' : '-'));
+
+function jpTime(){
+  const d=new Date(), h=d.getHours(), m=d.getMinutes();
+  const w=['日','月','火','水','木','金','土'][d.getDay()];
+  return {h,m,w,d};
 }
 
-/* ═════════ 口（ブラウザ音声合成・男性の低い声を選ぶ） ═════════ */
-const MALE_JA = ['Otoya','Ichiro','Hattori','Daichi','男性','Male'];
-function pickVoice(){
-  const all = speechSynthesis.getVoices().filter(v=>v.lang.replace('_','-').startsWith('ja'));
-  if(!all.length) return null;
-  for(const want of MALE_JA){
-    const v = all.find(v=>v.name.includes(want));
-    if(v) return v;
+let timerId=null, hintCount=0;
+
+/* 鍵が無いときの応答。挨拶・時刻・計算・タイマー・画面操作は本当に動く */
+function localBrain(raw){
+  const t = zen2han(raw).replace(/\s+/g,'');
+  const {h,m,w,d} = jpTime();
+
+  if(/(全画面|フルスクリーン)/.test(t)){
+    if(/(解除|やめ|戻|閉じ|オフ)/.test(t)){
+      if(document.fullscreenElement) document.exitFullscreen();
+      return '全画面を解除しました。';
+    }
+    toggleFS(); return '全画面にしました。';
   }
-  return all[0];
+  if(/(何時|時間|時刻|いま.*時)/.test(t))
+    return `${h}時${m}分です。`;
+  if(/(何日|日付|今日|きょう).*(何|日|曜)|何曜日/.test(t))
+    return `${d.getMonth()+1}月${d.getDate()}日、${w}曜日です。`;
+
+  const calc = t.match(/(-?\d+(?:\.\d+)?)(たす|足す|プラス|\+|ひく|引く|マイナス|かける|掛ける|×|\*|わる|割る|÷|\/)(-?\d+(?:\.\d+)?)/);
+  if(calc){
+    const a=+calc[1], b=+calc[3], op=calc[2];
+    let r;
+    if(/たす|足す|プラス|\+/.test(op)) r=a+b;
+    else if(/ひく|引く|マイナス/.test(op)) r=a-b;
+    else if(/かける|掛ける|×|\*/.test(op)) r=a*b;
+    else r = b===0 ? null : a/b;
+    return r===null ? 'ゼロでは割れません。' : `${Math.round(r*1e6)/1e6} です。`;
+  }
+
+  const tm = t.match(/(\d+)(秒|分)/);
+  if(tm && /(タイマー|はかって|測って|セット|カウント|アラーム)/.test(t)){
+    const sec = +tm[1] * (tm[2]==='分'?60:1);
+    clearTimeout(timerId);
+    timerId = setTimeout(()=>{ caption('JARVIS','時間です。',6000); speakBrowser('時間です。'); }, sec*1000);
+    return `${tm[1]}${tm[2]}、はかります。`;
+  }
+  if(/(タイマー).*(止|やめ|キャンセル|解除)/.test(t)){
+    clearTimeout(timerId); return 'タイマーを止めました。';
+  }
+
+  if(/(おはよ)/.test(t)) return 'おはようございます。';
+  if(/(こんばんは|おやすみ)/.test(t)) return /おやすみ/.test(t) ? 'おやすみなさい。' : 'こんばんは。';
+  if(/(こんにちは|やあ|ハロー|ハーイ)/.test(t)) return 'こんにちは。ご用件は。';
+  if(/(ありがと|サンキュー)/.test(t)) return 'どういたしまして。';
+  if(/(名前|誰|だれ|あなたは|君は)/.test(t)) return 'ジャービスです。あなたの補佐をします。';
+  if(/(元気|調子|大丈夫)/.test(t)) return '問題ありません。いつでもどうぞ。';
+  if(/(またね|バイバイ|さようなら|じゃあね)/.test(t)) return 'また呼んでください。';
+  if(/(できること|何ができ|使い方|ヘルプ)/.test(t))
+    return '時刻や日付、簡単な計算、タイマー、全画面の切り替えができます。';
+
+  // フォールバック。同じ催促を繰り返さない
+  hintCount++;
+  if(hintCount === 1)
+    return '今はローカル応答です。時刻、日付、計算、タイマー、全画面の操作ならお答えできます。';
+  if(hintCount % 6 === 0)
+    return '込み入った話をするなら、設定からAPIキーを入れてください。';
+  const ack = ['承知しました。','聞いています。','なるほど。','ええ。'];
+  return ack[hintCount % ack.length];
 }
-let voice=null;
-const loadVoice=()=>{ voice = pickVoice(); };
-loadVoice(); speechSynthesis.onvoiceschanged = loadVoice;
+
+async function think(text){
+  const key = localStorage.getItem(KEY);
+  if(!key) return localBrain(text);
+
+  history.push({role:'user', content:text});
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'x-api-key':key,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true',
+      },
+      body:JSON.stringify({model:'claude-sonnet-5', max_tokens:400,
+                           system:SYSTEM, messages:history}),
+    });
+    if(!res.ok){
+      history.pop();
+      return res.status===401
+        ? 'APIキーが無効のようです。ひとまずローカルで答えます。' + localBrain(text)
+        : localBrain(text);
+    }
+    const data = await res.json();
+    const reply = data.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+    history.push({role:'assistant', content:reply});
+    if(history.length>20) history = history.slice(-20);
+    return reply;
+  }catch(e){
+    history.pop();
+    return localBrain(text);          // 通信できなくても黙らない
+  }
+}
+
+/* ═════════ 口 ═════════
+   ピッチを下げすぎると日本語は途端に不明瞭になる。既定は 0.9
+   ═════════════════════════════════════════════════════ */
+const VP='jarvis.voice';
+// 自然さの順。Google のものは端末内蔵より明らかに聞き取りやすい
+const PREF = ['Google 日本語','Google Japanese','Ayumi','Nanami','Ichiro','Otoya','Kyoko','Haruka'];
+let voices=[], voice=null;
+let vPitch = +(localStorage.getItem('jarvis.pitch') ?? 0.9);
+let vRate  = +(localStorage.getItem('jarvis.rate')  ?? 1.0);
+
+function loadVoices(){
+  voices = speechSynthesis.getVoices()
+    .filter(v => v.lang.replace('_','-').toLowerCase().startsWith('ja'));
+  const saved = localStorage.getItem(VP);
+  voice = voices.find(v => v.name === saved)
+       || PREF.map(p => voices.find(v => v.name.includes(p))).find(Boolean)
+       || voices[0] || null;
+  fillVoiceSelect();
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+loadVoices();
 
 function speakBrowser(text){
   return new Promise(res=>{
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang='ja-JP';
-    if(voice) u.voice=voice;
-    u.pitch=0.65;      // 低く
-    u.rate=0.95;       // 少しゆっくり
-    u.onstart=()=>{ synthSpeaking=true; setState('speaking'); };
-    u.onend=u.onerror=()=>{ synthSpeaking=false; setState('idle'); res(); };
-    speechSynthesis.speak(u);
+    // Chrome は長い発話を途中で切るので、句点で分ける
+    const parts = String(text).split(/(?<=[。！？!?])/).filter(s=>s.trim());
+    if(!parts.length){ res(); return; }
+    let i = 0;
+    synthSpeaking = true; setState('speaking');
+    const next = () => {
+      if(i >= parts.length){
+        synthSpeaking = false; setState('idle'); res(); return;
+      }
+      const u = new SpeechSynthesisUtterance(parts[i++]);
+      u.lang='ja-JP';
+      if(voice) u.voice = voice;
+      u.pitch = vPitch;
+      u.rate  = vRate;
+      u.onend = next;
+      u.onerror = next;
+      speechSynthesis.speak(u);
+    };
+    next();
   });
 }
 
@@ -513,7 +626,7 @@ if(SR){
     caption('YOU', text, final?2600:0);
     if(!final) return;
     setState('thinking');
-    const reply = await askClaude(text.trim());
+    const reply = await think(text.trim());
     caption('JARVIS', reply, 7000);
     await speakBrowser(reply);
   };
@@ -607,8 +720,45 @@ document.getElementById('saveKey').onclick = () => {
 };
 document.getElementById('clearKey').onclick = () => {
   localStorage.removeItem(KEY); keyInput.value='';
-  caption('SYSTEM','キーを消去しました',2600);
+  caption('SYSTEM','キーを消去しました。ローカル応答に戻ります',2600);
 };
+
+/* 声の設定 */
+const voiceSel=document.getElementById('voiceSel');
+const pitchR=document.getElementById('pitchR'), pitchV=document.getElementById('pitchV');
+const rateR=document.getElementById('rateR'),  rateV=document.getElementById('rateV');
+
+function fillVoiceSelect(){
+  const voiceSel = document.getElementById('voiceSel');
+  if(!voiceSel) return;
+  voiceSel.innerHTML='';
+  if(!voices.length){
+    voiceSel.innerHTML='<option>日本語の音声が見つかりません</option>';
+    return;
+  }
+  for(const v of voices){
+    const o=document.createElement('option');
+    o.value=v.name; o.textContent=v.name;
+    if(voice && v.name===voice.name) o.selected=true;
+    voiceSel.appendChild(o);
+  }
+}
+voiceSel.onchange = () => {
+  voice = voices.find(v=>v.name===voiceSel.value) || voice;
+  localStorage.setItem(VP, voiceSel.value);
+};
+const syncSliders = () => {
+  pitchR.value=vPitch; pitchV.textContent=vPitch.toFixed(2);
+  rateR.value=vRate;   rateV.textContent=vRate.toFixed(2);
+};
+pitchR.oninput = () => { vPitch=+pitchR.value; pitchV.textContent=vPitch.toFixed(2);
+  localStorage.setItem('jarvis.pitch', vPitch); };
+rateR.oninput  = () => { vRate=+rateR.value;  rateV.textContent=vRate.toFixed(2);
+  localStorage.setItem('jarvis.rate', vRate); };
+syncSliders(); fillVoiceSelect();
+
+document.getElementById('testVoice').onclick = () =>
+  speakBrowser('ジャービスです。この声でよろしければ、そのままお使いください。');
 
 addEventListener('keydown', e => {
   if(panel.classList.contains('on')){
